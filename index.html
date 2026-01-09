@@ -141,6 +141,8 @@ button {
 </div>
 
 <script>
+/* ================= Firebase Config ================= */
+
 const firebaseConfig = {
   apiKey: "AIzaSyBe9w-5wQTIYKQ-4uNkWfVfpuqK647tZng",
   authDomain: "private-chat-ak2528.firebaseapp.com",
@@ -155,17 +157,23 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 auth.setPersistence(firebase.auth.Auth.Persistence.SESSION)
   .catch(err => alert(err.message));
+
 const db = firebase.firestore();
+
+/* ================= State ================= */
 
 let currentUser = null;
 let unsubscribe = null;
+let clearedAt = null;
+
+/* ================= Auth ================= */
 
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user.email;
     login.style.display = "none";
     chat.style.display = "block";
-    loadMessages();
+    loadClearMeta().then(loadMessages);
   } else {
     login.style.display = "block";
     chat.style.display = "none";
@@ -180,29 +188,52 @@ loginBtn.onclick = () => {
 
 logoutBtn.onclick = () => auth.signOut();
 
+/* ================= Clear Chat Meta ================= */
+
+function loadClearMeta() {
+  return db.collection("userChatMeta")
+    .doc(currentUser)
+    .get()
+    .then(doc => {
+      clearedAt = doc.exists ? doc.data().clearedAt : null;
+    });
+}
+
+/* ================= Messages ================= */
+
 function loadMessages() {
   unsubscribe = db.collection("messages")
     .orderBy("time")
     .onSnapshot(snap => {
       messages.innerHTML = "";
+
       snap.forEach(doc => {
         const m = doc.data();
+
+        // 🔐 Hide messages cleared by this user only
+        if (clearedAt && m.time && m.time.toMillis() <= clearedAt.toMillis()) {
+          return;
+        }
+
         const div = document.createElement("div");
         div.className = "msg " + (m.sender === currentUser ? "me" : "other");
         div.innerHTML = `${m.text}<div class="sender">${m.sender}</div>`;
         messages.appendChild(div);
       });
+
       messages.scrollTop = messages.scrollHeight;
     });
 }
 
 function sendText() {
   if (!msg.value.trim()) return;
+
   db.collection("messages").add({
     text: msg.value,
     sender: currentUser,
     time: firebase.firestore.FieldValue.serverTimestamp()
   });
+
   msg.value = "";
 }
 
@@ -215,8 +246,18 @@ msg.addEventListener("keydown", e => {
   }
 });
 
+/* ================= Clear Chat (FINAL, STABLE) ================= */
+
 clearBtn.onclick = () => {
-  messages.innerHTML = "";
+  const now = firebase.firestore.FieldValue.serverTimestamp();
+
+  db.collection("userChatMeta")
+    .doc(currentUser)
+    .set({ clearedAt: now }, { merge: true })
+    .then(() => {
+      clearedAt = new Date(); // immediate UI effect
+      messages.innerHTML = "";
+    });
 };
 </script>
 
