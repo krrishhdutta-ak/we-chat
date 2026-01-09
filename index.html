@@ -1,41 +1,224 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>We Chat</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f0f2f5;
-      margin: 0;
-      padding: 0;
-    }
-    header {
-      background: #008069;
-      color: white;
-      padding: 14px;
-      text-align: center;
-      font-size: 20px;
-    }
-    .box {
-      margin: 40px auto;
-      max-width: 400px;
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      text-align: center;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>We Chat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f0f2f5;
+}
+
+header {
+  background: #008069;
+  color: #fff;
+  text-align: center;
+  padding: 14px;
+  font-size: 18px;
+}
+
+#login, #chat {
+  max-width: 600px;
+  margin: auto;
+  padding: 12px;
+}
+
+input, button {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+button {
+  border: none;
+  border-radius: 6px;
+}
+
+#loginBtn {
+  background: #008069;
+  color: white;
+}
+
+#messages {
+  height: 60vh;
+  overflow-y: auto;
+  background: #efeae2;
+  padding: 10px;
+  border-radius: 6px;
+}
+
+.msg {
+  max-width: 75%;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+}
+
+.me {
+  background: #d9fdd3;
+  margin-left: auto;
+}
+
+.other {
+  background: white;
+}
+
+.sender {
+  font-size: 11px;
+  color: #555;
+  margin-top: 4px;
+}
+
+#inputBar {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+#msg {
+  flex: 1;
+  border-radius: 20px;
+  border: 1px solid #ccc;
+}
+
+#sendBtn {
+  width: 48px;
+  border-radius: 50%;
+  background: #008069;
+  color: white;
+  font-size: 18px;
+}
+
+#actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+#clearBtn {
+  background: #ff4d4d;
+  color: white;
+}
+
+#logoutBtn {
+  background: #666;
+  color: white;
+}
+</style>
 </head>
+
 <body>
 
 <header>💬 We Chat</header>
 
-<div class="box">
-  <h3>GitHub Pages is working 🎉</h3>
-  <p>If you can see this page, hosting is done.</p>
+<div id="login">
+  <input id="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Password">
+  <button id="loginBtn">Login</button>
 </div>
+
+<div id="chat" style="display:none;">
+  <div id="messages"></div>
+
+  <div id="inputBar">
+    <input id="msg" placeholder="Type a message…">
+    <button id="sendBtn">➤</button>
+  </div>
+
+  <div id="actions">
+    <button id="clearBtn">Clear Chat</button>
+    <button id="logoutBtn">Logout</button>
+  </div>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyBe9w-5wQTIYKQ-4uNkWfVfpuqK647tZng",
+  authDomain: "private-chat-ak2528.firebaseapp.com",
+  projectId: "private-chat-ak2528",
+  storageBucket: "private-chat-ak2528.firebasestorage.app",
+  messagingSenderId: "56256948298",
+  appId: "1:56256948298:web:4b90dfc7a381cb67801eb3"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+auth.setPersistence(firebase.auth.Auth.Persistence.SESSION)
+  .catch(err => alert(err.message));
+const db = firebase.firestore();
+
+let currentUser = null;
+let unsubscribe = null;
+
+auth.onAuthStateChanged(user => {
+  if (user) {
+    currentUser = user.email;
+    login.style.display = "none";
+    chat.style.display = "block";
+    loadMessages();
+  } else {
+    login.style.display = "block";
+    chat.style.display = "none";
+    if (unsubscribe) unsubscribe();
+  }
+});
+
+loginBtn.onclick = () => {
+  auth.signInWithEmailAndPassword(email.value, password.value)
+    .catch(e => alert(e.message));
+};
+
+logoutBtn.onclick = () => auth.signOut();
+
+function loadMessages() {
+  unsubscribe = db.collection("messages")
+    .orderBy("time")
+    .onSnapshot(snap => {
+      messages.innerHTML = "";
+      snap.forEach(doc => {
+        const m = doc.data();
+        const div = document.createElement("div");
+        div.className = "msg " + (m.sender === currentUser ? "me" : "other");
+        div.innerHTML = `${m.text}<div class="sender">${m.sender}</div>`;
+        messages.appendChild(div);
+      });
+      messages.scrollTop = messages.scrollHeight;
+    });
+}
+
+function sendText() {
+  if (!msg.value.trim()) return;
+  db.collection("messages").add({
+    text: msg.value,
+    sender: currentUser,
+    time: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  msg.value = "";
+}
+
+sendBtn.onclick = sendText;
+
+msg.addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    sendText();
+  }
+});
+
+clearBtn.onclick = () => {
+  messages.innerHTML = "";
+};
+</script>
 
 </body>
 </html>
