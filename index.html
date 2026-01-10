@@ -17,27 +17,21 @@ body {
   background: #f0f2f5;
 }
 
-/* HEADER */
 header {
   background: #008069;
   color: #fff;
   padding: 14px;
-  font-size: 18px;
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
+  font-size: 18px;
 }
 
-#appTitle {
-  margin: auto;
-}
-
-#userInfo {
+#userEmail {
   font-size: 13px;
   opacity: 0.9;
 }
 
-/* LAYOUT */
 #login, #chat {
   max-width: 600px;
   margin: auto;
@@ -62,7 +56,6 @@ button {
   color: white;
 }
 
-/* CHAT */
 #messages {
   height: 60vh;
   overflow-y: auto;
@@ -93,7 +86,6 @@ button {
   margin-top: 4px;
 }
 
-/* INPUT */
 #inputBar {
   display: flex;
   gap: 8px;
@@ -114,7 +106,6 @@ button {
   font-size: 18px;
 }
 
-/* ACTIONS */
 #actions {
   display: flex;
   gap: 8px;
@@ -136,9 +127,8 @@ button {
 <body>
 
 <header>
-  <div></div>
-  <div id="appTitle">💬 We Chat</div>
-  <div id="userInfo"></div>
+  <div>💬 We Chat</div>
+  <div id="userEmail"></div>
 </header>
 
 <div id="login">
@@ -162,11 +152,12 @@ button {
 </div>
 
 <script>
+/* 🔹 Firebase Config */
 const firebaseConfig = {
   apiKey: "AIzaSyBe9w-5wQTIYKQ-4uNkWfVfpuqK647tZng",
   authDomain: "private-chat-ak2528.firebaseapp.com",
   projectId: "private-chat-ak2528",
-  storageBucket: "private-chat-ak2528.firebasestorage.app",
+  storageBucket: "private-chat-ak2528.appspot.com",
   messagingSenderId: "56256948298",
   appId: "1:56256948298:web:4b90dfc7a381cb67801eb3"
 };
@@ -179,29 +170,40 @@ const db = firebase.firestore();
 
 let currentUser = null;
 let unsubscribe = null;
+let clearedAt = null;
 
-auth.onAuthStateChanged(user => {
+/* 🔹 Auth State */
+auth.onAuthStateChanged(async user => {
   if (user) {
     currentUser = user.email;
-    userInfo.textContent = currentUser;
+    userEmail.textContent = currentUser;
+
     login.style.display = "none";
     chat.style.display = "block";
+
+    const metaRef = db.collection("userChatMeta").doc(currentUser);
+    const metaSnap = await metaRef.get();
+    clearedAt = metaSnap.exists ? metaSnap.data().clearedAt || null : null;
+
     loadMessages();
   } else {
     login.style.display = "block";
     chat.style.display = "none";
-    userInfo.textContent = "";
+    userEmail.textContent = "";
     if (unsubscribe) unsubscribe();
   }
 });
 
+/* 🔹 Login */
 loginBtn.onclick = () => {
   auth.signInWithEmailAndPassword(email.value, password.value)
     .catch(e => alert(e.message));
 };
 
+/* 🔹 Logout */
 logoutBtn.onclick = () => auth.signOut();
 
+/* 🔹 Load Messages */
 function loadMessages() {
   unsubscribe = db.collection("messages")
     .orderBy("time")
@@ -209,6 +211,9 @@ function loadMessages() {
       messages.innerHTML = "";
       snap.forEach(doc => {
         const m = doc.data();
+
+        if (clearedAt && m.time && m.time.toDate() <= clearedAt.toDate()) return;
+
         const div = document.createElement("div");
         div.className = "msg " + (m.sender === currentUser ? "me" : "other");
         div.innerHTML = `${m.text}<div class="sender">${m.sender}</div>`;
@@ -218,6 +223,7 @@ function loadMessages() {
     });
 }
 
+/* 🔹 Send Message */
 function sendText() {
   if (!msg.value.trim()) return;
   db.collection("messages").add({
@@ -237,7 +243,15 @@ msg.addEventListener("keydown", e => {
   }
 });
 
-clearBtn.onclick = () => {
+/* 🔹 Clear Chat (PER USER, PERMANENT) */
+clearBtn.onclick = async () => {
+  const now = firebase.firestore.Timestamp.now();
+  clearedAt = now;
+
+  await db.collection("userChatMeta")
+    .doc(currentUser)
+    .set({ clearedAt: now }, { merge: true });
+
   messages.innerHTML = "";
 };
 </script>
