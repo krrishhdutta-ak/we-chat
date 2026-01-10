@@ -17,14 +17,27 @@ body {
   background: #f0f2f5;
 }
 
+/* HEADER */
 header {
   background: #008069;
   color: #fff;
-  text-align: center;
   padding: 14px;
   font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
+#appTitle {
+  margin: auto;
+}
+
+#userInfo {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+/* LAYOUT */
 #login, #chat {
   max-width: 600px;
   margin: auto;
@@ -41,6 +54,7 @@ input, button {
 button {
   border: none;
   border-radius: 6px;
+  cursor: pointer;
 }
 
 #loginBtn {
@@ -48,6 +62,7 @@ button {
   color: white;
 }
 
+/* CHAT */
 #messages {
   height: 60vh;
   overflow-y: auto;
@@ -78,6 +93,7 @@ button {
   margin-top: 4px;
 }
 
+/* INPUT */
 #inputBar {
   display: flex;
   gap: 8px;
@@ -98,6 +114,7 @@ button {
   font-size: 18px;
 }
 
+/* ACTIONS */
 #actions {
   display: flex;
   gap: 8px;
@@ -118,7 +135,11 @@ button {
 
 <body>
 
-<header>💬 We Chat</header>
+<header>
+  <div></div>
+  <div id="appTitle">💬 We Chat</div>
+  <div id="userInfo"></div>
+</header>
 
 <div id="login">
   <input id="email" placeholder="Email">
@@ -141,8 +162,6 @@ button {
 </div>
 
 <script>
-/* ================= Firebase Config ================= */
-
 const firebaseConfig = {
   apiKey: "AIzaSyBe9w-5wQTIYKQ-4uNkWfVfpuqK647tZng",
   authDomain: "private-chat-ak2528.firebaseapp.com",
@@ -155,28 +174,23 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 
 const auth = firebase.auth();
-auth.setPersistence(firebase.auth.Auth.Persistence.SESSION)
-  .catch(err => alert(err.message));
-
+auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 const db = firebase.firestore();
-
-/* ================= State ================= */
 
 let currentUser = null;
 let unsubscribe = null;
-let clearedAt = null;
-
-/* ================= Auth ================= */
 
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user.email;
+    userInfo.textContent = currentUser;
     login.style.display = "none";
     chat.style.display = "block";
-    loadClearMeta().then(loadMessages);
+    loadMessages();
   } else {
     login.style.display = "block";
     chat.style.display = "none";
+    userInfo.textContent = "";
     if (unsubscribe) unsubscribe();
   }
 });
@@ -188,52 +202,29 @@ loginBtn.onclick = () => {
 
 logoutBtn.onclick = () => auth.signOut();
 
-/* ================= Clear Chat Meta ================= */
-
-function loadClearMeta() {
-  return db.collection("userChatMeta")
-    .doc(currentUser)
-    .get()
-    .then(doc => {
-      clearedAt = doc.exists ? doc.data().clearedAt : null;
-    });
-}
-
-/* ================= Messages ================= */
-
 function loadMessages() {
   unsubscribe = db.collection("messages")
     .orderBy("time")
     .onSnapshot(snap => {
       messages.innerHTML = "";
-
       snap.forEach(doc => {
         const m = doc.data();
-
-        // 🔐 Hide messages cleared by this user only
-        if (clearedAt && m.time && m.time.toMillis() <= clearedAt.toMillis()) {
-          return;
-        }
-
         const div = document.createElement("div");
         div.className = "msg " + (m.sender === currentUser ? "me" : "other");
         div.innerHTML = `${m.text}<div class="sender">${m.sender}</div>`;
         messages.appendChild(div);
       });
-
       messages.scrollTop = messages.scrollHeight;
     });
 }
 
 function sendText() {
   if (!msg.value.trim()) return;
-
   db.collection("messages").add({
     text: msg.value,
     sender: currentUser,
     time: firebase.firestore.FieldValue.serverTimestamp()
   });
-
   msg.value = "";
 }
 
@@ -246,18 +237,8 @@ msg.addEventListener("keydown", e => {
   }
 });
 
-/* ================= Clear Chat (FINAL, STABLE) ================= */
-
 clearBtn.onclick = () => {
-  const now = firebase.firestore.FieldValue.serverTimestamp();
-
-  db.collection("userChatMeta")
-    .doc(currentUser)
-    .set({ clearedAt: now }, { merge: true })
-    .then(() => {
-      clearedAt = new Date(); // immediate UI effect
-      messages.innerHTML = "";
-    });
+  messages.innerHTML = "";
 };
 </script>
 
