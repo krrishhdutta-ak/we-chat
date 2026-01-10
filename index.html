@@ -20,13 +20,12 @@ body {
 header {
   background: #008069;
   color: #fff;
-  padding: 14px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  text-align: center;
+  padding: 12px;
+  font-size: 18px;
 }
 
-header small {
+#statusLine {
   font-size: 12px;
   opacity: 0.9;
 }
@@ -37,7 +36,7 @@ header small {
   padding: 12px;
 }
 
-input, allowbutton {
+input, button {
   width: 100%;
   padding: 12px;
   margin-bottom: 8px;
@@ -47,7 +46,6 @@ input, allowbutton {
 button {
   border: none;
   border-radius: 6px;
-  cursor: pointer;
 }
 
 #loginBtn {
@@ -76,15 +74,13 @@ button {
 }
 
 .other {
-  background: #ffffff;
+  background: white;
 }
 
-.meta {
+.sender {
   font-size: 11px;
   color: #555;
   margin-top: 4px;
-  display: flex;
-  justify-content: space-between;
 }
 
 #inputBar {
@@ -128,11 +124,8 @@ button {
 <body>
 
 <header>
-  <div>💬 We Chat</div>
-  <div>
-    <small id="userLabel"></small><br>
-    <small id="statusLabel"></small>
-  </div>
+  💬 We Chat
+  <div id="statusLine"></div>
 </header>
 
 <div id="login">
@@ -155,7 +148,8 @@ button {
   </div>
 </div>
 
-</script>
+<script>
+/* ================= FIREBASE CONFIG ================= */
 const firebaseConfig = {
   apiKey: "AIzaSyBe9w-5wQTIYKQ-4uNkWfVfpuqK647tZng",
   authDomain: "private-chat-ak2528.firebaseapp.com",
@@ -171,90 +165,89 @@ const auth = firebase.auth();
 auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 const db = firebase.firestore();
 
-let currentUser = "";
-let unsubscribeMessages = null;
-let unsubscribeStatus = null;
+/* ================= STATE ================= */
+let currentUser = null;
+let unsubMessages = null;
+let unsubStatus = null;
 
-function formatIST(date) {
-  if (!date) return "";
-  return date.toLocaleString("en-IN", {
+/* ================= HELPERS ================= */
+function ist(ts) {
+  if (!ts) return "";
+  return ts.toDate().toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
     day: "2-digit",
     month: "short",
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
+    hour12: true
   });
 }
 
-function setStatus(status) {
-  if (!currentUser) return;
-  db.collection("users").doc(currentUser).set({
-    status,
-    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-  }, { merge: true });
+function setStatus(text) {
+  document.getElementById("statusLine").innerText = text;
 }
 
+/* ================= AUTH ================= */
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user.email;
-    userLabel.textContent = currentUser;
-
     login.style.display = "none";
     chat.style.display = "block";
 
-    setStatus("online");
-    listenStatus();
+    updateOnline(true);
     loadMessages();
+    watchOtherUser();
   } else {
-    cleanup();
     login.style.display = "block";
     chat.style.display = "none";
+    if (unsubMessages) unsubMessages();
+    if (unsubStatus) unsubStatus();
   }
 });
 
-function listenStatus() {
-  unsubscribeStatus = db.collection("users")
-    .doc(currentUser)
-    .onSnapshot(doc => {
-      const d = doc.data();
-      if (!d) return;
-      statusLabel.textContent =
-        d.status === "online"
-          ? "Online"
-          : "Last seen: " + formatIST(d.lastSeen?.toDate());
-    });
-}
-
-function cleanup() {
-  if (unsubscribeMessages) unsubscribeMessages();
-  if (unsubscribeStatus) unsubscribeStatus();
-  userLabel.textContent = "";
-  statusLabel.textContent = "";
-}
-
+/* ================= LOGIN ================= */
 loginBtn.onclick = () => {
   auth.signInWithEmailAndPassword(email.value, password.value)
     .catch(e => alert(e.message));
 };
 
 logoutBtn.onclick = () => {
-  setStatus("offline");
+  updateOnline(false);
   auth.signOut();
 };
 
+/* ================= ONLINE / LAST SEEN ================= */
+function updateOnline(isOnline) {
+  if (!currentUser) return;
+  db.collection("users").doc(currentUser).set({
+    online: isOnline,
+    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+}
+
 window.addEventListener("beforeunload", () => {
-  setStatus("offline");
+  updateOnline(false);
 });
 
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    setStatus("offline");
-  } else {
-    setStatus("online");
-  }
-});
+/* ================= OTHER USER STATUS ================= */
+function watchOtherUser() {
+  unsubStatus = db.collection("users").onSnapshot(snap => {
+    snap.forEach(doc => {
+      if (doc.id !== currentUser) {
+        const d = doc.data();
+        if (d.online) {
+          setStatus(`${doc.id} • Online`);
+        } else if (d.lastSeen) {
+          setStatus(`${doc.id} • Last seen ${ist(d.lastSeen)}`);
+        }
+      }
+    });
+  });
+}
 
+/* ================= MESSAGES ================= */
 function loadMessages() {
-  unsubscribeMessages = db.collection("messages")
+  unsubMessages = db.collection("messages")
     .orderBy("time")
     .onSnapshot(snap => {
       messages.innerHTML = "";
@@ -264,16 +257,15 @@ function loadMessages() {
         div.className = "msg " + (m.sender === currentUser ? "me" : "other");
         div.innerHTML = `
           <div>${m.text}</div>
-          <div class="meta">
-            <span>${m.sender}</span>
-            <span>${formatIST(m.time?.toDate())}</span>
-          </div>`;
+          <div class="sender">${m.sender} • ${ist(m.time)}</div>
+        `;
         messages.appendChild(div);
       });
       messages.scrollTop = messages.scrollHeight;
     });
 }
 
+/* ================= SEND ================= */
 function sendText() {
   if (!msg.value.trim()) return;
   db.collection("messages").add({
@@ -292,11 +284,12 @@ msg.addEventListener("keydown", e => {
   }
 });
 
-clearBtn.onclick = () => {
-  messages.innerHTML = "";
+/* ================= CLEAR CHAT (REAL DELETE) ================= */
+clearBtn.onclick = async () => {
+  const snap = await db.collection("messages").get();
+  snap.forEach(d => d.ref.delete());
 };
 </script>
 
 </body>
 </html>
-
