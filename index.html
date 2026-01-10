@@ -26,8 +26,8 @@ header {
   align-items: center;
 }
 
-header span {
-  font-size: 14px;
+header small {
+  font-size: 12px;
   opacity: 0.9;
 }
 
@@ -37,7 +37,7 @@ header span {
   padding: 12px;
 }
 
-input, button {
+input, allowbutton {
   width: 100%;
   padding: 12px;
   margin-bottom: 8px;
@@ -68,7 +68,6 @@ button {
   padding: 8px 10px;
   margin-bottom: 8px;
   border-radius: 8px;
-  font-size: 14px;
 }
 
 .me {
@@ -130,7 +129,10 @@ button {
 
 <header>
   <div>💬 We Chat</div>
-  <span id="userLabel"></span>
+  <div>
+    <small id="userLabel"></small><br>
+    <small id="statusLabel"></small>
+  </div>
 </header>
 
 <div id="login">
@@ -170,42 +172,89 @@ auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 const db = firebase.firestore();
 
 let currentUser = "";
-let unsubscribe = null;
+let unsubscribeMessages = null;
+let unsubscribeStatus = null;
 
-function formatIST(ts) {
-  if (!ts) return "";
-  return new Date(ts).toLocaleString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
+function formatIST(date) {
+  if (!date) return "";
+  return date.toLocaleString("en-IN", {
     day: "2-digit",
-    month: "short"
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit"
   });
+}
+
+function setStatus(status) {
+  if (!currentUser) return;
+  db.collection("users").doc(currentUser).set({
+    status,
+    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
 }
 
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user.email;
     userLabel.textContent = currentUser;
+
     login.style.display = "none";
     chat.style.display = "block";
+
+    setStatus("online");
+    listenStatus();
     loadMessages();
   } else {
+    cleanup();
     login.style.display = "block";
     chat.style.display = "none";
-    userLabel.textContent = "";
-    if (unsubscribe) unsubscribe();
   }
 });
+
+function listenStatus() {
+  unsubscribeStatus = db.collection("users")
+    .doc(currentUser)
+    .onSnapshot(doc => {
+      const d = doc.data();
+      if (!d) return;
+      statusLabel.textContent =
+        d.status === "online"
+          ? "Online"
+          : "Last seen: " + formatIST(d.lastSeen?.toDate());
+    });
+}
+
+function cleanup() {
+  if (unsubscribeMessages) unsubscribeMessages();
+  if (unsubscribeStatus) unsubscribeStatus();
+  userLabel.textContent = "";
+  statusLabel.textContent = "";
+}
 
 loginBtn.onclick = () => {
   auth.signInWithEmailAndPassword(email.value, password.value)
     .catch(e => alert(e.message));
 };
 
-logoutBtn.onclick = () => auth.signOut();
+logoutBtn.onclick = () => {
+  setStatus("offline");
+  auth.signOut();
+};
+
+window.addEventListener("beforeunload", () => {
+  setStatus("offline");
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    setStatus("offline");
+  } else {
+    setStatus("online");
+  }
+});
 
 function loadMessages() {
-  unsubscribe = db.collection("messages")
+  unsubscribeMessages = db.collection("messages")
     .orderBy("time")
     .onSnapshot(snap => {
       messages.innerHTML = "";
@@ -236,7 +285,6 @@ function sendText() {
 }
 
 sendBtn.onclick = sendText;
-
 msg.addEventListener("keydown", e => {
   if (e.key === "Enter") {
     e.preventDefault();
