@@ -28,7 +28,7 @@ header {
 
 #headerRight {
   text-align: right;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 #status {
@@ -143,7 +143,7 @@ button {
 </div>
 
 <script>
-/* 🔹 Firebase Config */
+/* Firebase config */
 const firebaseConfig = {
   apiKey: "AIzaSyBe9w-5wQTIYKQ-4uNkWfVfpuqK647tZng",
   authDomain: "private-chat-ak2528.firebaseapp.com",
@@ -163,18 +163,20 @@ let currentUser = null;
 let unsubscribe = null;
 let clearedAt = null;
 
-/* 🔹 Format IST time */
+/* IST formatter */
 function formatIST(ts) {
-  return new Date(ts.toDate()).toLocaleString("en-IN", {
-    timeZone: "Asia/Kolkata",
-    hour: "2-digit",
-    minute: "2-digit",
-    day: "2-digit",
-    month: "short"
-  });
+  return ts
+    ? new Date(ts.toDate()).toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "short"
+      })
+    : "";
 }
 
-/* 🔹 Auth State */
+/* Auth state */
 auth.onAuthStateChanged(async user => {
   if (user) {
     currentUser = user.email;
@@ -188,7 +190,6 @@ auth.onAuthStateChanged(async user => {
     const metaSnap = await metaRef.get();
     clearedAt = metaSnap.exists ? metaSnap.data().clearedAt || null : null;
 
-    // mark online
     await metaRef.set({
       online: true,
       lastSeen: firebase.firestore.FieldValue.serverTimestamp()
@@ -196,7 +197,6 @@ auth.onAuthStateChanged(async user => {
 
     loadMessages();
 
-    // tab close / refresh
     window.addEventListener("beforeunload", () => {
       metaRef.set({
         online: false,
@@ -213,13 +213,13 @@ auth.onAuthStateChanged(async user => {
   }
 });
 
-/* 🔹 Login */
+/* Login */
 loginBtn.onclick = () => {
   auth.signInWithEmailAndPassword(email.value, password.value)
     .catch(e => alert(e.message));
 };
 
-/* 🔹 Logout */
+/* Logout */
 logoutBtn.onclick = async () => {
   await db.collection("userChatMeta").doc(currentUser).set({
     online: false,
@@ -229,7 +229,7 @@ logoutBtn.onclick = async () => {
   auth.signOut();
 };
 
-/* 🔹 Load Messages */
+/* Messages */
 function loadMessages() {
   unsubscribe = db.collection("messages")
     .orderBy("time")
@@ -248,7 +248,7 @@ function loadMessages() {
     });
 }
 
-/* 🔹 Send Message */
+/* Send */
 function sendText() {
   if (!msg.value.trim()) return;
   db.collection("messages").add({
@@ -264,7 +264,7 @@ msg.addEventListener("keydown", e => {
   if (e.key === "Enter") sendText();
 });
 
-/* 🔹 Clear Chat */
+/* Clear chat */
 clearBtn.onclick = async () => {
   const now = firebase.firestore.Timestamp.now();
   clearedAt = now;
@@ -273,16 +273,13 @@ clearBtn.onclick = async () => {
   messages.innerHTML = "";
 };
 
-/* 🔹 Live Last Seen Display */
-db.collection("userChatMeta").onSnapshot(snap => {
-  snap.forEach(doc => {
-    if (doc.id !== currentUser) {
-      const d = doc.data();
-      status.textContent = d.online
-        ? "Online"
-        : `Last seen ${formatIST(d.lastSeen)}`;
-    }
-  });
+/* Live self last-seen */
+db.collection("userChatMeta").doc(() => currentUser).onSnapshot(doc => {
+  if (!doc.exists) return;
+  const d = doc.data();
+  status.textContent = d.online
+    ? "Online"
+    : `Last seen ${formatIST(d.lastSeen)}`;
 });
 </script>
 
