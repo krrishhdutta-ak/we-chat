@@ -20,16 +20,20 @@ body {
 header {
   background: #008069;
   color: #fff;
-  padding: 14px;
+  padding: 12px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 18px;
 }
 
-#userEmail {
-  font-size: 13px;
-  opacity: 0.9;
+#headerRight {
+  text-align: right;
+  font-size: 12px;
+}
+
+#status {
+  font-size: 11px;
+  opacity: 0.85;
 }
 
 #login, #chat {
@@ -51,10 +55,7 @@ button {
   cursor: pointer;
 }
 
-#loginBtn {
-  background: #008069;
-  color: white;
-}
+#loginBtn { background: #008069; color: white; }
 
 #messages {
   height: 60vh;
@@ -71,14 +72,8 @@ button {
   border-radius: 8px;
 }
 
-.me {
-  background: #d9fdd3;
-  margin-left: auto;
-}
-
-.other {
-  background: white;
-}
+.me { background: #d9fdd3; margin-left: auto; }
+.other { background: white; }
 
 .sender {
   font-size: 11px;
@@ -112,15 +107,8 @@ button {
   margin-top: 8px;
 }
 
-#clearBtn {
-  background: #ff4d4d;
-  color: white;
-}
-
-#logoutBtn {
-  background: #666;
-  color: white;
-}
+#clearBtn { background: #ff4d4d; color: white; }
+#logoutBtn { background: #666; color: white; }
 </style>
 </head>
 
@@ -128,7 +116,10 @@ button {
 
 <header>
   <div>💬 We Chat</div>
-  <div id="userEmail"></div>
+  <div id="headerRight">
+    <div id="userEmail"></div>
+    <div id="status"></div>
+  </div>
 </header>
 
 <div id="login">
@@ -172,11 +163,23 @@ let currentUser = null;
 let unsubscribe = null;
 let clearedAt = null;
 
+/* 🔹 Format IST time */
+function formatIST(ts) {
+  return new Date(ts.toDate()).toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "short"
+  });
+}
+
 /* 🔹 Auth State */
 auth.onAuthStateChanged(async user => {
   if (user) {
     currentUser = user.email;
     userEmail.textContent = currentUser;
+    status.textContent = "Online";
 
     login.style.display = "none";
     chat.style.display = "block";
@@ -185,11 +188,27 @@ auth.onAuthStateChanged(async user => {
     const metaSnap = await metaRef.get();
     clearedAt = metaSnap.exists ? metaSnap.data().clearedAt || null : null;
 
+    // mark online
+    await metaRef.set({
+      online: true,
+      lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
     loadMessages();
+
+    // tab close / refresh
+    window.addEventListener("beforeunload", () => {
+      metaRef.set({
+        online: false,
+        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    });
+
   } else {
     login.style.display = "block";
     chat.style.display = "none";
     userEmail.textContent = "";
+    status.textContent = "";
     if (unsubscribe) unsubscribe();
   }
 });
@@ -201,7 +220,14 @@ loginBtn.onclick = () => {
 };
 
 /* 🔹 Logout */
-logoutBtn.onclick = () => auth.signOut();
+logoutBtn.onclick = async () => {
+  await db.collection("userChatMeta").doc(currentUser).set({
+    online: false,
+    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  auth.signOut();
+};
 
 /* 🔹 Load Messages */
 function loadMessages() {
@@ -211,7 +237,6 @@ function loadMessages() {
       messages.innerHTML = "";
       snap.forEach(doc => {
         const m = doc.data();
-
         if (clearedAt && m.time && m.time.toDate() <= clearedAt.toDate()) return;
 
         const div = document.createElement("div");
@@ -235,25 +260,30 @@ function sendText() {
 }
 
 sendBtn.onclick = sendText;
-
 msg.addEventListener("keydown", e => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    sendText();
-  }
+  if (e.key === "Enter") sendText();
 });
 
-/* 🔹 Clear Chat (PER USER, PERMANENT) */
+/* 🔹 Clear Chat */
 clearBtn.onclick = async () => {
   const now = firebase.firestore.Timestamp.now();
   clearedAt = now;
-
-  await db.collection("userChatMeta")
-    .doc(currentUser)
+  await db.collection("userChatMeta").doc(currentUser)
     .set({ clearedAt: now }, { merge: true });
-
   messages.innerHTML = "";
 };
+
+/* 🔹 Live Last Seen Display */
+db.collection("userChatMeta").onSnapshot(snap => {
+  snap.forEach(doc => {
+    if (doc.id !== currentUser) {
+      const d = doc.data();
+      status.textContent = d.online
+        ? "Online"
+        : `Last seen ${formatIST(d.lastSeen)}`;
+    }
+  });
+});
 </script>
 
 </body>
