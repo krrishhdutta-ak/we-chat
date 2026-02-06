@@ -90,6 +90,7 @@ const db=firebase.firestore();
 let currentUser=null;
 let clearedAt=firebase.firestore.Timestamp.fromMillis(0);
 let unsub=null;
+let userDoc=null;
 
 auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
 
@@ -101,8 +102,25 @@ currentUser=u.email;
 login.style.display="none";
 chat.style.display="block";
 
+userDoc=db.collection("users").doc(currentUser);
+
+// mark ONLINE
+await userDoc.set({
+online:true,
+lastSeen:firebase.firestore.FieldValue.serverTimestamp()
+},{merge:true});
+
 await initMeta();
 loadMessages();
+
+// update lastSeen every 20 sec
+setInterval(()=>{
+userDoc.set({
+online:true,
+lastSeen:firebase.firestore.FieldValue.serverTimestamp()
+},{merge:true});
+},20000);
+
 });
 
 async function initMeta(){
@@ -158,7 +176,14 @@ clearedAt=now;
 messages.innerHTML="";
 };
 
-logoutBtn.onclick=()=>{
+logoutBtn.onclick=async()=>{
+if(currentUser){
+await db.collection("users").doc(currentUser).set({
+online:false,
+lastSeen:firebase.firestore.FieldValue.serverTimestamp()
+},{merge:true});
+}
+
 auth.signOut();
 location.reload();
 };
@@ -168,8 +193,17 @@ auth.signInWithEmailAndPassword(email.value,password.value)
 .catch(e=>alert(e.message));
 };
 
+window.addEventListener("beforeunload",()=>{
+if(!currentUser)return;
+db.collection("users").doc(currentUser).set({
+online:false,
+lastSeen:firebase.firestore.FieldValue.serverTimestamp()
+},{merge:true});
+});
+
 </script>
 </body>
 </html>
+
 
 
