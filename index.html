@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <title>We Chat</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -37,7 +36,7 @@ button{padding:10px;border:none;border-radius:6px}
 #clearBtn{background:#ff4d4d;color:white;width:100%;margin-top:8px}
 #logoutBtn{background:#666;color:white;width:100%;margin-top:8px}
 
-#status{text-align:center;font-size:12px;color:#444;margin-bottom:4px}
+#status{text-align:center;font-size:12px}
 </style>
 </head>
 
@@ -47,18 +46,17 @@ button{padding:10px;border:none;border-radius:6px}
 
 <div id="login">
 <input id="email" placeholder="Email">
-<input id="password" type="password" placeholder="Password">
+<input id="password" type="password">
 <button id="loginBtn">Login</button>
 </div>
 
 <div id="chat" style="display:none">
 
 <div id="status"></div>
-
 <div id="messages"></div>
 
 <div id="bar">
-<textarea id="msg" placeholder="Type message"></textarea>
+<textarea id="msg"></textarea>
 <button id="sendBtn">➤</button>
 </div>
 
@@ -69,24 +67,17 @@ button{padding:10px;border:none;border-radius:6px}
 
 <script>
 
-const firebaseConfig={
+firebase.initializeApp({
 apiKey:"AIzaSyBe9w-5wQTIYKQ-4uNkWfVfpuqK647tZng",
 authDomain:"private-chat-ak2528.firebaseapp.com",
-projectId:"private-chat-ak2528",
-storageBucket:"private-chat-ak2528.appspot.com",
-messagingSenderId:"56256948298",
-appId:"1:56256948298:web:4b90dfc7a381cb67801eb3"
-};
-
-firebase.initializeApp(firebaseConfig);
+projectId:"private-chat-ak2528"
+});
 
 const auth=firebase.auth();
 const db=firebase.firestore();
 
 let currentUser=null;
 let clearedAt=firebase.firestore.Timestamp.fromMillis(0);
-let unsub=null;
-let userDoc=null;
 
 auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
 
@@ -98,44 +89,21 @@ currentUser=u.email;
 login.style.display="none";
 chat.style.display="block";
 
-userDoc=db.collection("users").doc(currentUser);
-
-await userDoc.set({
+await db.collection("users").doc(currentUser).set({
 online:true,
 lastSeen:firebase.firestore.FieldValue.serverTimestamp()
 },{merge:true});
 
-await initMeta();
 loadMessages();
-watchOtherUser();
-
-setInterval(()=>{
-userDoc.set({
-online:true,
-lastSeen:firebase.firestore.FieldValue.serverTimestamp()
-},{merge:true});
-},20000);
+watchStatus();
 });
 
-async function initMeta(){
-const r=db.collection("userChatMeta").doc(currentUser);
-const s=await r.get();
-if(!s.exists){
-await r.set({clearedAt:firebase.firestore.Timestamp.fromMillis(0)});
-}
-clearedAt=(await r.get()).data().clearedAt;
-}
-
 function loadMessages(){
-if(unsub)unsub();
-
-unsub=db.collection("messages").orderBy("time").onSnapshot(q=>{
+db.collection("messages").orderBy("time").onSnapshot(s=>{
 messages.innerHTML="";
-q.forEach(d=>{
+s.forEach(d=>{
 const m=d.data();
-if(!m.time||m.time.toMillis()<=clearedAt.toMillis())return;
-
-const t=m.time.toDate().toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit"});
+const t=m.time?.toDate().toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit"});
 const div=document.createElement("div");
 div.className="msg "+(m.sender===currentUser?"me":"other");
 div.innerHTML=`${m.text}<div class="sender">${m.sender} • ${t}</div>`;
@@ -145,9 +113,7 @@ messages.scrollTop=messages.scrollHeight;
 });
 }
 
-sendBtn.onclick=sendText;
-
-function sendText(){
+sendBtn.onclick=()=>{
 if(!msg.value.trim())return;
 db.collection("messages").add({
 text:msg.value,
@@ -155,24 +121,19 @@ sender:currentUser,
 time:firebase.firestore.FieldValue.serverTimestamp()
 });
 msg.value="";
-}
+};
 
 msg.addEventListener("keydown",e=>{
 if(e.key==="Enter"){
 e.preventDefault();
-sendText();
+sendBtn.click();
 }
 });
 
-clearBtn.onclick=async()=>{
-const now=firebase.firestore.Timestamp.now();
-await db.collection("userChatMeta").doc(currentUser).set({clearedAt:now},{merge:true});
-clearedAt=now;
-messages.innerHTML="";
-};
+clearBtn.onclick=()=>messages.innerHTML="";
 
 logoutBtn.onclick=async()=>{
-await userDoc.set({
+await db.collection("users").doc(currentUser).set({
 online:false,
 lastSeen:firebase.firestore.FieldValue.serverTimestamp()
 },{merge:true});
@@ -193,17 +154,13 @@ lastSeen:firebase.firestore.FieldValue.serverTimestamp()
 },{merge:true});
 });
 
-function watchOtherUser(){
+function watchStatus(){
 db.collection("users").onSnapshot(s=>{
 s.forEach(d=>{
 if(d.id!==currentUser){
 const u=d.data();
-if(u.online){
-status.innerText=d.id+" • Online";
-}else if(u.lastSeen){
-const t=u.lastSeen.toDate().toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit"});
-status.innerText=d.id+" • Last seen "+t;
-}
+status.innerText=u.online?`${d.id} • Online`:
+`${d.id} • Last seen ${u.lastSeen?.toDate().toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit"})}`;
 }
 });
 });
