@@ -154,11 +154,14 @@ auth.signInWithEmailAndPassword(email.value,password.value)
 .catch(e=>alert(e.message));
 };
 
-logoutBtn.onclick=()=>{
-auth.signOut();
+logoutBtn.onclick=async()=>{
+await auth.signOut();
+email.value="";
+password.value="";
 };
 
 </script>
 </body>
 </html>
+
 
