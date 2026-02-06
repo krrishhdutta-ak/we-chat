@@ -1,124 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>We Chat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+body{margin:0;font-family:Arial;background:#f0f2f5}
+#topbar{background:#008069;color:#fff;padding:14px}
+#userLabel{float:right;font-size:13px}
+#login,#chat{max-width:600px;margin:auto;padding:12px}
+#messages{height:60vh;overflow:auto;background:#efeae2;padding:10px}
+.msg{padding:8px;margin:6px;border-radius:6px;max-width:75%}
+.me{background:#d9fdd3;margin-left:auto}
+.other{background:white}
+.sender{font-size:11px;color:#555}
+input,button{width:100%;padding:10px;margin-top:6px}
+#inputBar{display:flex;gap:6px}
+#msg{flex:1}
+#sendBtn{width:50px}
+#actions{display:flex;gap:6px;margin-top:8px}
+</style>
+</head>
+
+<body>
+
+<div id="topbar">
+💬 We Chat
+<span id="userLabel"></span>
+</div>
+
+<div id="login">
+<input id="email" placeholder="Email">
+<input id="password" type="password" placeholder="Password">
+<button id="loginBtn">Login</button>
+</div>
+
+<div id="chat" style="display:none">
+<div id="messages"></div>
+
+<div id="inputBar">
+<input id="msg" placeholder="Type...">
+<button id="sendBtn">➤</button>
+</div>
+
+<div id="actions">
+<button id="clearBtn">Clear Chat</button>
+<button id="logoutBtn">Logout</button>
+</div>
+</div>
+
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyBe9w-5wQTIYKQ-4uNkWfVfpuqK647tZng",
-  authDomain: "private-chat-ak2528.firebaseapp.com",
-  projectId: "private-chat-ak2528",
-  storageBucket: "private-chat-ak2528.firebasestorage.app",
-  messagingSenderId: "56256948298",
-  appId: "1:56256948298:web:4b90dfc7a381cb67801eb3"
+const firebaseConfig={
+apiKey:"AIzaSyBe9w-5wQTIYKQ-4uNkWfVfpuqK647tZng",
+authDomain:"private-chat-ak2528.firebaseapp.com",
+projectId:"private-chat-ak2528",
+storageBucket:"private-chat-ak2528.appspot.com",
+messagingSenderId:"56256948298",
+appId:"1:56256948298:web:4b90dfc7a381cb67801eb3"
 };
 
 firebase.initializeApp(firebaseConfig);
+const auth=firebase.auth();
+const db=firebase.firestore();
 
-const auth = firebase.auth();
-const db = firebase.firestore();
+let currentUser=null;
+let clearedAt=firebase.firestore.Timestamp.fromMillis(0);
+let unsub=null;
 
-let currentUser = null;
-let clearedAt = null;
-let unsubscribe = null;
+auth.onAuthStateChanged(async u=>{
+if(!u)return;
+currentUser=u.email;
+userLabel.innerText=currentUser;
+login.style.display="none";
+chat.style.display="block";
 
-// ---------- AUTH ----------
-auth.onAuthStateChanged(async user => {
-  if (!user) return;
+const ref=db.collection("userChatMeta").doc(currentUser);
+const snap=await ref.get();
+if(!snap.exists){
+await ref.set({clearedAt});
+}else clearedAt=snap.data().clearedAt||clearedAt;
 
-  currentUser = user.email;
-
-  document.getElementById("login").style.display = "none";
-  document.getElementById("chat").style.display = "block";
-
-  document.getElementById("userLabel").innerText = currentUser;
-
-  await initUserMeta();
-  loadMessages();
+load();
 });
 
-// ---------- USER META ----------
-async function initUserMeta() {
-  const ref = db.collection("userChatMeta").doc(currentUser);
+function load(){
+if(unsub)unsub();
+unsub=db.collection("messages").orderBy("time")
+.onSnapshot(s=>{
+messages.innerHTML="";
+s.forEach(d=>{
+const m=d.data();
+if(!m.time||m.time.toMillis()<=clearedAt.toMillis())return;
 
-  const snap = await ref.get();
-  if (!snap.exists) {
-    await ref.set({
-      clearedAt: firebase.firestore.Timestamp.fromMillis(0)
-    });
-    clearedAt = firebase.firestore.Timestamp.fromMillis(0);
-  } else {
-    clearedAt = snap.data().clearedAt || firebase.firestore.Timestamp.fromMillis(0);
-  }
-}
-
-// ---------- LOAD MESSAGES ----------
-function loadMessages() {
-  if (unsubscribe) unsubscribe();
-
-  unsubscribe = db.collection("messages")
-    .orderBy("time")
-    .onSnapshot(snap => {
-      messages.innerHTML = "";
-
-      snap.forEach(doc => {
-        const m = doc.data();
-        if (!m.time || m.time.toMillis() <= clearedAt.toMillis()) return;
-
-        const div = document.createElement("div");
-        div.className = "msg " + (m.sender === currentUser ? "me" : "other");
-
-        const t = m.time.toDate().toLocaleString("en-IN", {
-          day: "2-digit",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit"
-        });
-
-        div.innerHTML = `
-          ${m.text}
-          <div class="sender">${m.sender} • ${t}</div>
-        `;
-
-        messages.appendChild(div);
-      });
-
-      messages.scrollTop = messages.scrollHeight;
-    });
-}
-
-// ---------- SEND ----------
-function sendText() {
-  if (!msg.value.trim()) return;
-
-  db.collection("messages").add({
-    text: msg.value,
-    sender: currentUser,
-    time: firebase.firestore.FieldValue.serverTimestamp()
-  });
-
-  msg.value = "";
-}
-
-sendBtn.onclick = sendText;
-
-msg.addEventListener("keydown", e => {
-  if (e.key === "Enter") sendText();
+const t=m.time.toDate().toLocaleString("en-IN",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});
+const div=document.createElement("div");
+div.className="msg "+(m.sender===currentUser?"me":"other");
+div.innerHTML=`${m.text}<div class="sender">${m.sender} • ${t}</div>`;
+messages.appendChild(div);
 });
+messages.scrollTop=messages.scrollHeight;
+});
+}
 
-// ---------- CLEAR CHAT (FIXED) ----------
-clearBtn.onclick = async () => {
-  const now = firebase.firestore.Timestamp.now();
-
-  await db.collection("userChatMeta")
-    .doc(currentUser)
-    .set({ clearedAt: now }, { merge: true });
-
-  clearedAt = now;
-  messages.innerHTML = "";
+sendBtn.onclick=()=>{
+if(!msg.value.trim())return;
+db.collection("messages").add({
+text:msg.value,
+sender:currentUser,
+time:firebase.firestore.FieldValue.serverTimestamp()
+});
+msg.value="";
 };
 
-// ---------- LOGOUT ----------
-logoutBtn.onclick = () => auth.signOut();
-
-// ---------- LOGIN ----------
-loginBtn.onclick = () => {
-  auth.signInWithEmailAndPassword(email.value, password.value)
-    .catch(e => alert(e.message));
+clearBtn.onclick=async()=>{
+clearedAt=firebase.firestore.Timestamp.now();
+await db.collection("userChatMeta").doc(currentUser).set({clearedAt},{merge:true});
+messages.innerHTML="";
 };
+
+logoutBtn.onclick=()=>auth.signOut();
+loginBtn.onclick=()=>auth.signInWithEmailAndPassword(email.value,password.value);
 </script>
+
+</body>
+</html>
