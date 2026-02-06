@@ -104,6 +104,7 @@ firebase.initializeApp(firebaseConfig);
 const auth=firebase.auth();
 const db=firebase.firestore();
 const storage = firebase.storage();
+const file = document.getElementById("file");
 
 let currentUser=null;
 let clearedAt=firebase.firestore.Timestamp.fromMillis(0);
@@ -189,6 +190,7 @@ auth.signInWithEmailAndPassword(email.value,password.value)
 </script>
 </body>
 </html>
+
 
 
 
