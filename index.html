@@ -31,7 +31,14 @@ button{padding:10px;border:none;border-radius:6px}
 .sender{font-size:11px;color:#555}
 
 #bar{display:flex;gap:8px;margin-top:8px}
-#msg{flex:1;border-radius:20px;border:1px solid #ccc}
+#msg{
+flex:1;
+border-radius:20px;
+border:1px solid #ccc;
+padding:10px;
+resize:none;
+height:42px;
+}
 
 #sendBtn{width:50px;background:#008069;color:white;border-radius:50%}
 
@@ -55,7 +62,7 @@ button{padding:10px;border:none;border-radius:6px}
 <div id="messages"></div>
 
 <div id="bar">
-<input id="msg" placeholder="Type message">
+<textarea id="msg" placeholder="Type message"></textarea>
 <button id="sendBtn">➤</button>
 </div>
 
@@ -164,4 +171,5 @@ auth.signInWithEmailAndPassword(email.value,password.value)
 </script>
 </body>
 </html>
+
 
