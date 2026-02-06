@@ -3,18 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <title>We Chat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <style>
 body{margin:0;font-family:Arial;background:#f0f2f5}
-header{background:#008069;color:white;padding:14px;text-align:center}
+header{background:#008069;color:white;padding:14px;text-align:center;font-size:18px}
 
 #login,#chat{max-width:600px;margin:auto;padding:12px}
 
-input,textarea{width:100%;padding:10px;margin:6px 0}
+input,textarea{width:100%;padding:10px;margin:6px 0;border-radius:6px;border:1px solid #ccc}
 
 button{padding:10px;border:none;border-radius:6px}
 
@@ -28,15 +30,23 @@ button{padding:10px;border:none;border-radius:6px}
 
 .sender{font-size:11px;color:#555}
 
-#bar{display:flex;gap:8px}
-#msg{flex:1;border-radius:20px}
+#bar{display:flex;gap:8px;margin-top:8px}
 
-#sendBtn{width:50px;background:#008069;color:white;border-radius:50%}
+#msg{
+flex:1;
+resize:none;
+height:42px;
+}
+
+#sendBtn{
+width:50px;
+background:#008069;
+color:white;
+border-radius:50%;
+}
 
 #clearBtn{background:#ff4d4d;color:white;width:100%;margin-top:8px}
 #logoutBtn{background:#666;color:white;width:100%;margin-top:8px}
-
-#status{text-align:center;font-size:12px}
 </style>
 </head>
 
@@ -46,17 +56,16 @@ button{padding:10px;border:none;border-radius:6px}
 
 <div id="login">
 <input id="email" placeholder="Email">
-<input id="password" type="password">
+<input id="password" type="password" placeholder="Password">
 <button id="loginBtn">Login</button>
 </div>
 
 <div id="chat" style="display:none">
 
-<div id="status"></div>
 <div id="messages"></div>
 
 <div id="bar">
-<textarea id="msg"></textarea>
+<textarea id="msg" placeholder="Type message"></textarea>
 <button id="sendBtn">➤</button>
 </div>
 
@@ -67,20 +76,27 @@ button{padding:10px;border:none;border-radius:6px}
 
 <script>
 
-firebase.initializeApp({
+const firebaseConfig={
 apiKey:"AIzaSyBe9w-5wQTIYKQ-4uNkWfVfpuqK647tZng",
 authDomain:"private-chat-ak2528.firebaseapp.com",
-projectId:"private-chat-ak2528"
-});
+projectId:"private-chat-ak2528",
+storageBucket:"private-chat-ak2528.appspot.com",
+messagingSenderId:"56256948298",
+appId:"1:56256948298:web:4b90dfc7a381cb67801eb3"
+};
+
+firebase.initializeApp(firebaseConfig);
 
 const auth=firebase.auth();
 const db=firebase.firestore();
 
-let currentUser=null;
-let clearedAt=firebase.firestore.Timestamp.fromMillis(0);
-
 auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
 
+let currentUser=null;
+let clearedAt=firebase.firestore.Timestamp.fromMillis(0);
+let unsub=null;
+
+// ---------- AUTH ----------
 auth.onAuthStateChanged(async u=>{
 if(!u)return;
 
@@ -89,82 +105,89 @@ currentUser=u.email;
 login.style.display="none";
 chat.style.display="block";
 
-await db.collection("users").doc(currentUser).set({
-online:true,
-lastSeen:firebase.firestore.FieldValue.serverTimestamp()
-},{merge:true});
-
+await initMeta();
 loadMessages();
-watchStatus();
 });
 
+// ---------- META ----------
+async function initMeta(){
+const r=db.collection("userChatMeta").doc(currentUser);
+const s=await r.get();
+
+if(!s.exists){
+await r.set({clearedAt:firebase.firestore.Timestamp.fromMillis(0)});
+clearedAt=firebase.firestore.Timestamp.fromMillis(0);
+}else{
+clearedAt=s.data().clearedAt;
+}
+}
+
+// ---------- LOAD ----------
 function loadMessages(){
-db.collection("messages").orderBy("time").onSnapshot(s=>{
+if(unsub)unsub();
+
+unsub=db.collection("messages").orderBy("time").onSnapshot(q=>{
 messages.innerHTML="";
-s.forEach(d=>{
+
+q.forEach(d=>{
 const m=d.data();
-const t=m.time?.toDate().toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit"});
+if(!m.time||m.time.toMillis()<=clearedAt.toMillis())return;
+
+const t=m.time.toDate().toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit"});
+
 const div=document.createElement("div");
 div.className="msg "+(m.sender===currentUser?"me":"other");
+
 div.innerHTML=`${m.text}<div class="sender">${m.sender} • ${t}</div>`;
 messages.appendChild(div);
 });
+
 messages.scrollTop=messages.scrollHeight;
 });
 }
 
-sendBtn.onclick=()=>{
+// ---------- SEND ----------
+function sendText(){
 if(!msg.value.trim())return;
+
 db.collection("messages").add({
 text:msg.value,
 sender:currentUser,
 time:firebase.firestore.FieldValue.serverTimestamp()
 });
+
 msg.value="";
-};
+msg.focus();
+}
+
+sendBtn.onclick=sendText;
 
 msg.addEventListener("keydown",e=>{
 if(e.key==="Enter"){
 e.preventDefault();
-sendBtn.click();
+sendText();
 }
 });
 
-clearBtn.onclick=()=>messages.innerHTML="";
+// ---------- CLEAR ----------
+clearBtn.onclick=async()=>{
+const now=firebase.firestore.Timestamp.now();
+await db.collection("userChatMeta").doc(currentUser).set({clearedAt:now},{merge:true});
+clearedAt=now;
+messages.innerHTML="";
+};
 
-logoutBtn.onclick=async()=>{
-await db.collection("users").doc(currentUser).set({
-online:false,
-lastSeen:firebase.firestore.FieldValue.serverTimestamp()
-},{merge:true});
+// ---------- LOGOUT ----------
+logoutBtn.onclick=()=>{
 auth.signOut();
 location.reload();
 };
 
+// ---------- LOGIN ----------
 loginBtn.onclick=()=>{
 auth.signInWithEmailAndPassword(email.value,password.value)
 .catch(e=>alert(e.message));
 };
-
-window.addEventListener("beforeunload",()=>{
-if(!currentUser)return;
-db.collection("users").doc(currentUser).set({
-online:false,
-lastSeen:firebase.firestore.FieldValue.serverTimestamp()
-},{merge:true});
-});
-
-function watchStatus(){
-db.collection("users").onSnapshot(s=>{
-s.forEach(d=>{
-if(d.id!==currentUser){
-const u=d.data();
-status.innerText=u.online?`${d.id} • Online`:
-`${d.id} • Last seen ${u.lastSeen?.toDate().toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit"})}`;
-}
-});
-});
-}
 
 </script>
 </body>
