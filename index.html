@@ -137,6 +137,13 @@ time:firebase.firestore.FieldValue.serverTimestamp()
 msg.value="";
 };
 
+msg.addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    sendBtn.click();
+  }
+});
+
 clearBtn.onclick=async()=>{
 const now=firebase.firestore.Timestamp.now();
 await db.collection("userChatMeta").doc(currentUser).set({clearedAt:now},{merge:true});
@@ -157,3 +164,4 @@ auth.signInWithEmailAndPassword(email.value,password.value)
 </script>
 </body>
 </html>
+
