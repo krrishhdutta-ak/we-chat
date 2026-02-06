@@ -153,6 +153,30 @@ messages.scrollTop=messages.scrollHeight;
 });
 }
 
+file.onchange = async () => {
+
+  alert("File selected");
+
+  const f = file.files[0];
+  if(!f) return;
+
+  const ref = storage.ref("chat/" + Date.now() + "_" + f.name);
+
+  const snap = await ref.put(f);
+
+  const url = await snap.ref.getDownloadURL();
+
+  await db.collection("messages").add({
+    sender: currentUser,
+    time: firebase.firestore.FieldValue.serverTimestamp(),
+    fileUrl: url,
+    fileName: f.name,
+    fileType: f.type
+  });
+
+  file.value="";
+};
+
 sendBtn.onclick=()=>{
 if(!msg.value.trim())return;
 db.collection("messages").add({
@@ -190,6 +214,7 @@ auth.signInWithEmailAndPassword(email.value,password.value)
 </script>
 </body>
 </html>
+
 
 
 
