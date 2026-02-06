@@ -5,18 +5,17 @@
 <title>We Chat</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <style>
 body{margin:0;font-family:Arial;background:#f0f2f5}
-header{background:#008069;color:white;padding:14px;text-align:center;font-size:18px}
+header{background:#008069;color:white;padding:14px;text-align:center}
 
 #login,#chat{max-width:600px;margin:auto;padding:12px}
 
-input{width:100%;padding:10px;margin:6px 0}
+input,textarea{width:100%;padding:10px;margin:6px 0}
 
 button{padding:10px;border:none;border-radius:6px}
 
@@ -30,20 +29,15 @@ button{padding:10px;border:none;border-radius:6px}
 
 .sender{font-size:11px;color:#555}
 
-#bar{display:flex;gap:8px;margin-top:8px}
-#msg{
-flex:1;
-border-radius:20px;
-border:1px solid #ccc;
-padding:10px;
-resize:none;
-height:42px;
-}
+#bar{display:flex;gap:8px}
+#msg{flex:1;border-radius:20px}
 
 #sendBtn{width:50px;background:#008069;color:white;border-radius:50%}
 
 #clearBtn{background:#ff4d4d;color:white;width:100%;margin-top:8px}
 #logoutBtn{background:#666;color:white;width:100%;margin-top:8px}
+
+#status{text-align:center;font-size:12px;color:#444;margin-bottom:4px}
 </style>
 </head>
 
@@ -58,6 +52,8 @@ height:42px;
 </div>
 
 <div id="chat" style="display:none">
+
+<div id="status"></div>
 
 <div id="messages"></div>
 
@@ -104,7 +100,6 @@ chat.style.display="block";
 
 userDoc=db.collection("users").doc(currentUser);
 
-// mark ONLINE
 await userDoc.set({
 online:true,
 lastSeen:firebase.firestore.FieldValue.serverTimestamp()
@@ -112,25 +107,23 @@ lastSeen:firebase.firestore.FieldValue.serverTimestamp()
 
 await initMeta();
 loadMessages();
+watchOtherUser();
 
-// update lastSeen every 20 sec
 setInterval(()=>{
 userDoc.set({
 online:true,
 lastSeen:firebase.firestore.FieldValue.serverTimestamp()
 },{merge:true});
 },20000);
-
 });
 
 async function initMeta(){
 const r=db.collection("userChatMeta").doc(currentUser);
 const s=await r.get();
-
 if(!s.exists){
 await r.set({clearedAt:firebase.firestore.Timestamp.fromMillis(0)});
-clearedAt=firebase.firestore.Timestamp.fromMillis(0);
-}else clearedAt=s.data().clearedAt;
+}
+clearedAt=(await r.get()).data().clearedAt;
 }
 
 function loadMessages(){
@@ -152,7 +145,9 @@ messages.scrollTop=messages.scrollHeight;
 });
 }
 
-sendBtn.onclick=()=>{
+sendBtn.onclick=sendText;
+
+function sendText(){
 if(!msg.value.trim())return;
 db.collection("messages").add({
 text:msg.value,
@@ -160,13 +155,13 @@ sender:currentUser,
 time:firebase.firestore.FieldValue.serverTimestamp()
 });
 msg.value="";
-};
+}
 
-msg.addEventListener("keydown", e => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    sendBtn.click();
-  }
+msg.addEventListener("keydown",e=>{
+if(e.key==="Enter"){
+e.preventDefault();
+sendText();
+}
 });
 
 clearBtn.onclick=async()=>{
@@ -177,13 +172,10 @@ messages.innerHTML="";
 };
 
 logoutBtn.onclick=async()=>{
-if(currentUser){
-await db.collection("users").doc(currentUser).set({
+await userDoc.set({
 online:false,
 lastSeen:firebase.firestore.FieldValue.serverTimestamp()
 },{merge:true});
-}
-
 auth.signOut();
 location.reload();
 };
@@ -201,9 +193,22 @@ lastSeen:firebase.firestore.FieldValue.serverTimestamp()
 },{merge:true});
 });
 
+function watchOtherUser(){
+db.collection("users").onSnapshot(s=>{
+s.forEach(d=>{
+if(d.id!==currentUser){
+const u=d.data();
+if(u.online){
+status.innerText=d.id+" • Online";
+}else if(u.lastSeen){
+const t=u.lastSeen.toDate().toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit"});
+status.innerText=d.id+" • Last seen "+t;
+}
+}
+});
+});
+}
+
 </script>
 </body>
 </html>
-
-
-
