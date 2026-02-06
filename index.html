@@ -5,6 +5,7 @@
 <title>We Chat</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
+<!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -15,30 +16,27 @@ header{background:#008069;color:white;padding:14px;text-align:center;font-size:1
 
 #login,#chat{max-width:600px;margin:auto;padding:12px}
 
-input,button{padding:12px;font-size:16px;border-radius:6px;border:1px solid #ccc}
+input{width:100%;padding:10px;margin:6px 0}
+
+button{padding:10px;border:none;border-radius:6px}
+
+#loginBtn{background:#008069;color:white;width:100%}
 
 #messages{height:60vh;overflow:auto;background:#efeae2;padding:10px;border-radius:6px}
 
 .msg{padding:8px;margin-bottom:6px;border-radius:8px;max-width:75%}
-
 .me{background:#d9fdd3;margin-left:auto}
 .other{background:white}
 
 .sender{font-size:11px;color:#555}
 
 #bar{display:flex;gap:8px;margin-top:8px}
-#msg{flex:1}
+#msg{flex:1;border-radius:20px;border:1px solid #ccc}
 
-#sendBtn{
-width:48px;
-border-radius:50%;
-background:#008069;
-color:white;
-border:none
-}
+#sendBtn{width:50px;background:#008069;color:white;border-radius:50%}
 
-#clearBtn{background:#ff4d4d;color:white;width:100%;margin-top:8px;border:none}
-#logoutBtn{background:#666;color:white;width:100%;margin-top:6px;border:none}
+#clearBtn{background:#ff4d4d;color:white;width:100%;margin-top:8px}
+#logoutBtn{background:#666;color:white;width:100%;margin-top:8px}
 </style>
 </head>
 
@@ -57,7 +55,7 @@ border:none
 <div id="messages"></div>
 
 <div id="bar">
-<input id="msg" placeholder="Type a message...">
+<input id="msg" placeholder="Type message">
 <button id="sendBtn">➤</button>
 </div>
 
@@ -72,27 +70,27 @@ const firebaseConfig={
 apiKey:"AIzaSyBe9w-5wQTIYKQ-4uNkWfVfpuqK647tZng",
 authDomain:"private-chat-ak2528.firebaseapp.com",
 projectId:"private-chat-ak2528",
-storageBucket:"private-chat-ak2528.firebasestorage.app",
+storageBucket:"private-chat-ak2528.appspot.com",
 messagingSenderId:"56256948298",
 appId:"1:56256948298:web:4b90dfc7a381cb67801eb3"
 };
 
-firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION);
+firebase.initializeApp(firebaseConfig);
 
 const auth=firebase.auth();
 const db=firebase.firestore();
 
 let currentUser=null;
 let clearedAt=firebase.firestore.Timestamp.fromMillis(0);
+let unsub=null;
+
+auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
 
 auth.onAuthStateChanged(async u=>{
-if(!u){
-chat.style.display="none";
-login.style.display="block";
-return;
-}
+if(!u)return;
 
 currentUser=u.email;
+
 login.style.display="none";
 chat.style.display="block";
 
@@ -106,21 +104,22 @@ const s=await r.get();
 
 if(!s.exists){
 await r.set({clearedAt:firebase.firestore.Timestamp.fromMillis(0)});
+clearedAt=firebase.firestore.Timestamp.fromMillis(0);
 }else clearedAt=s.data().clearedAt;
 }
 
 function loadMessages(){
-db.collection("messages").orderBy("time").onSnapshot(s=>{
+if(unsub)unsub();
+
+unsub=db.collection("messages").orderBy("time").onSnapshot(q=>{
 messages.innerHTML="";
-s.forEach(d=>{
+q.forEach(d=>{
 const m=d.data();
 if(!m.time||m.time.toMillis()<=clearedAt.toMillis())return;
 
+const t=m.time.toDate().toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit"});
 const div=document.createElement("div");
 div.className="msg "+(m.sender===currentUser?"me":"other");
-
-const t=m.time.toDate().toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit"});
-
 div.innerHTML=`${m.text}<div class="sender">${m.sender} • ${t}</div>`;
 messages.appendChild(div);
 });
@@ -138,10 +137,6 @@ time:firebase.firestore.FieldValue.serverTimestamp()
 msg.value="";
 };
 
-msg.addEventListener("keydown",e=>{
-if(e.key==="Enter")sendBtn.click();
-});
-
 clearBtn.onclick=async()=>{
 const now=firebase.firestore.Timestamp.now();
 await db.collection("userChatMeta").doc(currentUser).set({clearedAt:now},{merge:true});
@@ -149,19 +144,16 @@ clearedAt=now;
 messages.innerHTML="";
 };
 
+logoutBtn.onclick=()=>{
+auth.signOut();
+location.reload();
+};
+
 loginBtn.onclick=()=>{
 auth.signInWithEmailAndPassword(email.value,password.value)
 .catch(e=>alert(e.message));
 };
 
-logoutBtn.onclick=async()=>{
-await auth.signOut();
-email.value="";
-password.value="";
-};
-
 </script>
 </body>
 </html>
-
-
